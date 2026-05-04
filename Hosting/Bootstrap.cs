@@ -1,3 +1,4 @@
+using Scab.InteropWorker.Interop;
 using Serilog;
 
 namespace Scab.InteropWorker.Hosting;
@@ -30,12 +31,20 @@ public static class Bootstrap
 
         builder.Services.AddMagicOnion();
 
+        builder.Services.AddSingleton<InventorSession>();
         builder.Services.AddSingleton<Services.InventorExportService>();
         builder.Services.AddSingleton<Services.HeadlessRenderService>();
 
         var app = builder.Build();
 
         app.MapMagicOnionService();
+
+        var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Register(() =>
+        {
+            Log.Information("Releasing Inventor COM session...");
+            app.Services.GetRequiredService<InventorSession>().Dispose();
+        });
 
         Log.Information("Scab.InteropWorker listening on 127.0.0.1:{Port}", port);
         Log.Information("Press Ctrl+C to stop");
