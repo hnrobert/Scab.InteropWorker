@@ -1,5 +1,6 @@
 using Scab.InteropWorker.Interop;
 using Serilog;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace Scab.InteropWorker.Hosting;
 
@@ -21,7 +22,13 @@ public static class Bootstrap
 
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenLocalhost(port, listen =>
+            {
+                listen.Protocols = HttpProtocols.Http2;
+            });
+        });
 
         builder.Services.AddLogging(logging =>
         {
@@ -32,8 +39,7 @@ public static class Bootstrap
         builder.Services.AddMagicOnion();
 
         builder.Services.AddSingleton<InventorSession>();
-        builder.Services.AddSingleton<Services.InventorExportService>();
-        builder.Services.AddSingleton<Services.HeadlessRenderService>();
+        builder.Services.AddSingleton<Services.WorkerDispatchService>();
 
         var app = builder.Build();
 
@@ -46,7 +52,7 @@ public static class Bootstrap
             app.Services.GetRequiredService<InventorSession>().Dispose();
         });
 
-        Log.Information("Scab.InteropWorker listening on 127.0.0.1:{Port}", port);
+        Log.Information("Scab.InteropWorker listening on 127.0.0.1:{Port} (HTTP/2)", port);
         Log.Information("Press Ctrl+C to stop");
 
         app.Run();
