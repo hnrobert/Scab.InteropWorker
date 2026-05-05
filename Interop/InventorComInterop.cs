@@ -7,9 +7,10 @@ public static class InventorComInterop
     internal const string ProgId = "Inventor.Application";
 
     [DllImport("oleaut32.dll", PreserveSig = false)]
-    [return: MarshalAs(UnmanagedType.IDispatch)]
+    [return: MarshalAs(UnmanagedType.IUnknown)]
     private static extern object GetActiveObject(
-        [In, MarshalAs(UnmanagedType.LPStruct)] Guid clsid);
+        [In, MarshalAs(UnmanagedType.LPStruct)] Guid clsid,
+        IntPtr reserved);
 
     public static void EnsureWindows()
     {
@@ -29,7 +30,7 @@ public static class InventorComInterop
         var type = GetInventorType();
         try
         {
-            return GetActiveObject(type.GUID);
+            return GetActiveObject(type.GUID, IntPtr.Zero);
         }
         catch (COMException)
         {

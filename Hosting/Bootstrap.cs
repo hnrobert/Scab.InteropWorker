@@ -26,7 +26,11 @@ public static class Bootstrap
         {
             options.ListenLocalhost(port, listen =>
             {
-                listen.Protocols = HttpProtocols.Http2;
+                listen.Protocols = HttpProtocols.Http2; // gRPC (MagicOnion)
+            });
+            options.ListenLocalhost(port + 1, listen =>
+            {
+                listen.Protocols = HttpProtocols.Http1; // REST API
             });
         });
 
@@ -45,6 +49,37 @@ public static class Bootstrap
 
         app.MapMagicOnionService();
 
+        // HTTP API: export CAD file thumbnail via Inventor COM
+        app.MapGet("/thumbnail", (string path, int? size, HttpContext ctx) =>
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return Results.BadRequest("File not found: " + path);
+
+            var s = size ?? 256;
+            var session = ctx.RequestServices.GetRequiredService<InventorSession>();
+
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext is not ".ipt" and not ".iam" and not ".idw" and not ".ipn")
+                return Results.BadRequest("Unsupported file type. Supported: .ipt, .iam, .idw, .ipn");
+
+            var outputPath = Path.Combine(Path.GetTempPath(), "scab-worker-output", $"{Guid.NewGuid()}.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+
+            try
+            {
+                session.EnsureConnected();
+                session.ExportToPng(path, outputPath, s, s);
+                var bytes = File.ReadAllBytes(outputPath);
+                return Results.File(bytes, "image/png");
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(
+                    $"Inventor export failed: {ex.Message}. Ensure Autodesk Inventor is installed.",
+                    statusCode: 503);
+            }
+        });
+
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStopping.Register(() =>
         {
@@ -52,7 +87,7 @@ public static class Bootstrap
             app.Services.GetRequiredService<InventorSession>().Dispose();
         });
 
-        Log.Information("Scab.InteropWorker listening on 127.0.0.1:{Port} (HTTP/2)", port);
+        Log.Information("Scab.InteropWorker listening on 127.0.0.1:{Port} (gRPC) and :{HttpPort} (HTTP)", port, port + 1);
         Log.Information("Press Ctrl+C to stop");
 
         app.Run();
